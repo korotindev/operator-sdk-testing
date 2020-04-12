@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 
+	sdkstatus "github.com/operator-framework/operator-sdk/pkg/status"
 	cachev1alpha1 "github.com/soxat/operator-sdk-testing/pkg/apis/cache/v1alpha1"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -154,6 +155,12 @@ func (r *ReconcileMemcached) Reconcile(request reconcile.Request) (reconcile.Res
 	// Update status.Nodes if needed
 	if !reflect.DeepEqual(podNames, memcached.Status.Nodes) {
 		memcached.Status.Nodes = podNames
+		memcached.Status.Conditions.SetCondition(sdkstatus.Condition{
+			Type:    "TestCond",
+			Status:  corev1.ConditionTrue,
+			Reason:  "MyReason",
+			Message: "some help msg",
+		})
 		err := r.client.Status().Update(context.TODO(), memcached)
 		if err != nil {
 			reqLogger.Error(err, "Failed to update Memcached status")

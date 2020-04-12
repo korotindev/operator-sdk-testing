@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"github.com/operator-framework/operator-sdk/pkg/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,6 +26,9 @@ type MemcachedStatus struct {
 
 	// Nodes are the names of the memcached pods
 	Nodes []string `json:"nodes"`
+
+	// Conditions represent the latest available observations of an object's state
+	Conditions status.Conditions `json:"conditions"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
