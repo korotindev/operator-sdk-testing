@@ -5,6 +5,7 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	appV1Alpha1 "github.com/soxat/operator-sdk-testing/pkg/apis/app/v1alpha1"
 	appsV1 "k8s.io/api/apps/v1"
@@ -13,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -22,11 +22,6 @@ import (
 )
 
 var log = logf.Log.WithName("controller_application")
-
-/**
-* USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
-* business logic.  Delete these comments after modifying this file.*
- */
 
 // Add creates a new Application Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -79,16 +74,14 @@ type ReconcileApplication struct {
 
 // Reconcile reads that state of the cluster for a Application object and makes changes based on the state read
 // and what is in the Application.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
-// a Deployment as an example
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileApplication) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	reqLogger := log.WithValues("Request", request)
 	reqLogger.Info("Reconciling Application")
 
-	// Fetch the Application applicationInstance
+	// Fetch the Application instance
 	applicationInstance := &appV1Alpha1.Application{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, applicationInstance)
 	if err != nil {
@@ -105,37 +98,52 @@ func (r *ReconcileApplication) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Check if this Deployment already exists
 	foundDeployment := &appsV1.Deployment{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: applicationInstance.Name, Namespace: applicationInstance.Namespace}, foundDeployment)
-	if err != nil && errors.IsNotFound(err) {
-		// Define a new Deployment object
-		deployment := newDeploymentForApplication(applicationInstance)
+	searchDeploymentOpts := types.NamespacedName{
+		Name:      applicationInstance.Name,
+		Namespace: applicationInstance.Namespace,
+	}
+	err = r.client.Get(context.TODO(), searchDeploymentOpts, foundDeployment)
 
-		// Set Application applicationInstance as the owner and controller
-		if err := controllerutil.SetControllerReference(applicationInstance, deployment, r.scheme); err != nil {
-			return reconcile.Result{}, err
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Define a new Deployment object
+			deployment := newDeploymentForApplication(applicationInstance)
+
+			// Set Application applicationInstance as the owner and controller
+			err := controllerutil.SetControllerReference(applicationInstance, deployment, r.scheme)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			reqLogger.Info("Creating a new Deployment",
+				"Deployment.Namespace", deployment.Namespace,
+				"Deployment.Name", deployment.Name)
+
+			err = r.client.Create(context.TODO(), deployment)
+			if err != nil {
+				reqLogger.Error(err, "Failed to create new Deployment",
+					"Deployment.Namespace", deployment.Namespace,
+					"Deployment.Name", deployment.Name)
+				return reconcile.Result{}, err
+			}
+
+			// Deployment created successfully - don't requeue
+			return reconcile.Result{}, nil
 		}
 
-		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
-		err = r.client.Create(context.TODO(), deployment)
-		if err != nil {
-			reqLogger.Error(err, "Failed to create new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
-			return reconcile.Result{}, err
-		}
-
-		// Deployment created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
 		reqLogger.Error(err, "Failed to get Deployment")
 		return reconcile.Result{}, err
 	}
 
 	// Ensure the deployment size is the same as the spec
 	replicas := applicationInstance.Spec.Replicas
-	if foundDeployment.Spec.Replicas != replicas {
+	if *foundDeployment.Spec.Replicas != *replicas {
 		foundDeployment.Spec.Replicas = replicas
 		err = r.client.Update(context.TODO(), foundDeployment)
 		if err != nil {
-			reqLogger.Error(err, "Failed to update Deployment", "Deployment.Namespace", foundDeployment.Namespace, "Deployment.Name", foundDeployment.Name)
+			reqLogger.Error(err, "Failed to update Deployment",
+				"Deployment.Namespace", foundDeployment.Namespace,
+				"Deployment.Name", foundDeployment.Name)
 			return reconcile.Result{}, err
 		}
 		// Spec updated - return and requeue
@@ -149,10 +157,15 @@ func (r *ReconcileApplication) Reconcile(request reconcile.Request) (reconcile.R
 		client.InNamespace(applicationInstance.Namespace),
 		client.MatchingLabels(labelsForApplication(applicationInstance.Name)),
 	}
-	if err = r.client.List(context.TODO(), podList, listOpts...); err != nil {
-		reqLogger.Error(err, "Failed to list pods", "Deployment.Namespace", applicationInstance.Namespace, "Deployment.Name", applicationInstance.Name)
+
+	err = r.client.List(context.TODO(), podList, listOpts...)
+	if err != nil {
+		reqLogger.Error(err, "Failed to list pods",
+			"Deployment.Namespace", applicationInstance.Namespace,
+			"Deployment.Name", applicationInstance.Name)
 		return reconcile.Result{}, err
 	}
+
 	podNames := getPodNames(podList.Items)
 
 	if !reflect.DeepEqual(podNames, applicationInstance.Status.Pods) {
@@ -166,7 +179,6 @@ func (r *ReconcileApplication) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Update the Application status with the deployment replicas
 	deploymentReplicas := foundDeployment.Status.Replicas
-
 	if applicationInstance.Status.Replicas != deploymentReplicas {
 		applicationInstance.Status.Replicas = deploymentReplicas
 		err := r.client.Status().Update(context.TODO(), applicationInstance)
@@ -176,23 +188,23 @@ func (r *ReconcileApplication) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-
+	reqLogger.Info("Success!")
 
 	return reconcile.Result{}, nil
 }
 
 // newDeploymentForApplication returns a application deployment
-func newDeploymentForApplication(a *appV1Alpha1.Application) *appsV1.Deployment {
-	labels := labelsForApplication(a.Name)
-	containers := buildContainersForApplication(a)
+func newDeploymentForApplication(application *appV1Alpha1.Application) *appsV1.Deployment {
+	labels := labelsForApplication(application.Name)
+	containers := buildContainersForApplication(application)
 
 	return &appsV1.Deployment{
 		ObjectMeta: metaV1.ObjectMeta{
-			Name:      a.Name,
-			Namespace: a.Namespace,
+			Name:      application.Name,
+			Namespace: application.Namespace,
 		},
 		Spec: appsV1.DeploymentSpec{
-			Replicas: a.Spec.Replicas,
+			Replicas: application.Spec.Replicas,
 			Selector: &metaV1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -208,10 +220,10 @@ func newDeploymentForApplication(a *appV1Alpha1.Application) *appsV1.Deployment 
 	}
 }
 
-func buildContainersForApplication(a *appV1Alpha1.Application) []coreV1.Container {
+func buildContainersForApplication(application *appV1Alpha1.Application) []coreV1.Container {
 	var containers []coreV1.Container
 
-	for _, appContainer := range a.Spec.Containers {
+	for _, appContainer := range application.Spec.Containers {
 		container := buildContainerForApplicationContainer(appContainer)
 		containers = append(containers, container)
 	}
@@ -219,9 +231,10 @@ func buildContainersForApplication(a *appV1Alpha1.Application) []coreV1.Containe
 	return containers
 }
 
-func buildContainerForApplicationContainer(c appV1Alpha1.ApplicationContainer) coreV1.Container {
+func buildContainerForApplicationContainer(applicationContainer appV1Alpha1.ApplicationContainer) coreV1.Container {
 	var ports []coreV1.ContainerPort
-	for _, appContainerPort := range c.Ports {
+
+	for _, appContainerPort := range applicationContainer.Ports {
 		port := coreV1.ContainerPort{
 			Name:          appContainerPort.Name,
 			ContainerPort: appContainerPort.ContainerPort,
@@ -229,9 +242,10 @@ func buildContainerForApplicationContainer(c appV1Alpha1.ApplicationContainer) c
 		}
 		ports = append(ports, port)
 	}
+
 	return coreV1.Container{
-		Name:  c.Name,
-		Image: c.Image,
+		Name:  applicationContainer.Name,
+		Image: applicationContainer.Image,
 		Ports: ports,
 	}
 }
@@ -245,8 +259,10 @@ func labelsForApplication(name string) map[string]string {
 // getPodNames returns the pod names of the array of pods passed in
 func getPodNames(pods []coreV1.Pod) []string {
 	var podNames []string
+
 	for _, pod := range pods {
 		podNames = append(podNames, pod.Name)
 	}
+
 	return podNames
 }

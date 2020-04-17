@@ -3,7 +3,7 @@ kind: Application
 metadata:
   name: example-application
 spec:
-  replicas: 1
+  replicas: 3
   containers:
     - name: nginx
       image: nginx:latest
