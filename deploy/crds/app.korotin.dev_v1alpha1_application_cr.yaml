@@ -1,0 +1,15 @@
+apiVersion: app.korotin.dev/v1alpha1
+kind: Application
+metadata:
+  name: example-application
+spec:
+  replicas: 1
+  containers:
+    - name: nginx
+      image: nginx:latest
+      ports:
+        - name: default
+          containerPort: 80
+          hostPort: 80
+      cpuLimit: 'text'
+      memoryLimit: 'text'

@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/soxat/operator-sdk-testing/pkg/apis/cache/v1alpha1"
+	"github.com/soxat/operator-sdk-testing/pkg/apis/app/v1alpha1"
 )
 
 func init() {
