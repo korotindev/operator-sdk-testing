@@ -1,15 +1,32 @@
-How to run on minikube
+# How to run on minikube
 
+## Run locally
+```shell script
+minikube start --driver=parallels
+make code-gen
+make apply
+make test-e2e
 ```
-$> minikube start --driver=parallels
-$> make gen
-$> make apply
-$> make run
+## Run e2e tests
+```shell script
+minikube start --driver=parallels
+make code-gen
+make apply
+make run
 ```
 
+## Cleanup
+```shell script
+minikube delete
 ```
-$> kubectl describe applications                                                                                                                                                                  soxat.local: Fri Apr 17 16:28:11 2020
 
+## Create Application
+```shell script
+kubectl apply deploy/crds/app.korotin.dev_v1alpha1_application_cr.yaml
+kubectl describe applications                                                                                                                                                                  soxat.local: Fri Apr 17 16:28:11 2020
+```
+You will see:
+```
 Name:         example-application
 Namespace:    default
 Labels:       <none>
